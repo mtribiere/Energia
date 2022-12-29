@@ -2,9 +2,15 @@ import hashlib
 import json
 import random
 import sys
+import threading
+import time
 
-from flask import Flask
+from flask import Flask, request
 import requests
+
+from log import Log
+from block import Block
+from utils import *
 
 # List of the blocks 
 blockchain = []
@@ -12,62 +18,9 @@ blockchain = []
 # List of the nodes we know
 nodes = []
 
-# Reprsent a Log entry for a house
-class Log:
-    def __init__(self,nodeUUID,power):
-        self.nodeUUID = nodeUUID
-        self.power = power
-    
-    # Convert the log of JSON
-    def getJSON(self):
-        return json.dumps(self.__dict__)  
+# List of pending logs
+pendingLogs = []
         
-
-# Represent a Block
-class Block:
-    
-    logList = []
-    previousHash = 0
-    nonce = 0
-    
-    def __init__(self):
-        self.logList = []
-    
-    # Add a log to the Block
-    def addLog(self,log):
-        self.logList.append(log)
-    
-    # Convert the Block to JSON
-    def getJSON(self):    ## <--- Refactor me :(
-        jsonBlock = {
-            "previousHash": self.previousHash,
-            "nonce": self.nonce,
-            "logList": []
-        }
-        
-        
-        for log in self.logList:
-            jsonBlock["logList"].append({
-                "nodeUUID":log.nodeUUID,
-                "power":log.power
-                }) 
-            
-        return jsonBlock
-
-    # Get the Block hash
-    def getBlockHash(self):
-        jsonBlock = self.getJSON()
-        return hashlib.sha256(jsonBlock.encode('utf-8'))
-    
-        
-# Create an unique ID for the node
-def GenerateUUID():
-    UUID = 0
-    
-    for i in range(10):
-        UUID = UUID*10 + (int)(random.random()*10)
-    
-    return UUID
 
 # Create the API for the node
 app = Flask(__name__)
@@ -84,7 +37,15 @@ def chain():
         
     return json.dumps(x)
 
+@app.route('/add_log', methods=['POST'])
+def addLog():
+    values = request.get_json()
 
+
+
+
+
+#############################################################
 # Check usage
 if(len(sys.argv)<2):
     print("Usage: "+sys.argv[0] + " [port] (node)")
@@ -113,7 +74,7 @@ if(len(sys.argv) >= 3):
         tmpBlock.nonce = block["nonce"]
         
         for log in block["logList"]:
-            tmpBlock.addLog(Log(log["nodeUUID"],log["power"]))
+            tmpBlock.addLog(Log(log["nodeUUID"],log["power"],log["logID"]))
         
         blockchain.append(tmpBlock)
     
@@ -126,6 +87,8 @@ else:
     blockchain[0].addLog(Log(123456789,10))
     
 
+# Start the fake dataflow
+threading.Thread(target=simulateDataFlow, daemon=True).start()
 app.run(host='localhost', port=sys.argv[1])
 
 
