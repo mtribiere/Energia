@@ -30,9 +30,12 @@ class Block:
     previousHash = 0
     nonce = 0
     
+    def __init__(self):
+        self.logList = []
+    
     # Add a log to the Block
     def addLog(self,log):
-        self.logList += [log]
+        self.logList.append(log)
     
     # Convert the Block to JSON
     def getJSON(self):    ## <--- Refactor me :(
