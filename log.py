@@ -12,5 +12,17 @@ class Log:
         self.logID = logID
     
     # Convert the log of JSON
-    def getJSON(self):
-        return json.dumps(self.__dict__)  
+    def toJSON(self):
+        return {
+            "nodeUUID":self.nodeUUID,
+            "power": self.power,
+            "logID": self.logID
+        }
+    
+    def fromJSON(json):
+        return Log(
+            json["nodeUUID"],
+            json["power"],
+            json["logID"]
+        )
+    

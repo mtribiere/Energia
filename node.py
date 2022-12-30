@@ -31,19 +31,102 @@ def lastBlock():
 
 @app.route("/chain")
 def chain():
+    global blockchain, pendingLogs
     x = {"blocks":[]}
     for block in blockchain:
-        x["blocks"].append(block.getJSON())
+        x["blocks"].append(block.toJSON())
         
     return json.dumps(x)
 
-@app.route('/add_log', methods=['POST'])
-def addLog():
+@app.route('/add_node', methods=['POST'])
+def addNode():
+    
+    global blockchain, pendingLogs, nodes
     values = request.get_json()
 
+    # Add the node to the list
+    nodes.append(values["nodeIP"]) 
+    
+    print("Added node : "+values["nodeIP"])
+    
+    return "OK"
 
+@app.route('/add_log', methods=['POST'])
+def addLog():
+    
+    global blockchain, pendingLogs
+    values = request.get_json()
+    
+    # Get the log we want to add
+    toAdd = Log.fromJSON(values["log"])
 
+    # If the log should be added
+    if isLogPending(toAdd,pendingLogs) or toAdd.nodeUUID == UUID:
+        return "Not added"
+    
+    # Add the log to the list
+    pendingLogs.append(toAdd)
+    
+    print("Added pending log from "+str(toAdd.nodeUUID))
+    
+    # Broadcast the log to all known nodes
+    for node in nodes:
+        body = {"log":values["log"]}
+        requests.post("http://"+node+"/add_log",json=body)
+    
+    return "OK"
 
+@app.route('/sync_chain', methods=['POST'])
+def syncChain():
+    global blockchain, pendingLogs
+    
+    values = request.get_json()
+    
+    # Get the proposed chain
+    proposedChain = []
+    for block in values["blocks"]:
+        proposedChain.append(Block.fromJSON(block))
+    
+    # If we should not accept the chain
+    if not(shouldSyncBlockChain(proposedChain,blockchain)):
+        return "Not accepted chain"
+    
+    # Accept the chain
+    blockchain = proposedChain
+    pendingLogs = []
+    
+    print("Chain synced")
+    
+    return "OK"
+
+@app.route("/mine")
+def mineBlock():
+    
+    global blockchain, pendingLogs
+    
+    # Create a new block
+    newBlock = Block()
+    newBlock.previousHash = blockchain[len(blockchain)-1].getBlockHash()
+    
+    for log in pendingLogs:
+        newBlock.addLog(log)
+
+    # Mine it
+    newBlock.mine()
+    blockchain.append(newBlock)
+    pendingLogs = []
+
+    # Broadcast the new chain
+    body = {"blocks":[]}
+    for block in blockchain:
+        body["blocks"].append(block.toJSON())
+    
+    for node in nodes:
+        requests.post("http://"+node+"/sync_chain",json=body)
+
+    return "OK"
+
+    
 
 #############################################################
 # Check usage
@@ -64,19 +147,16 @@ if(len(sys.argv) >= 3):
     # Add the node to knowned node
     nodes += [sys.argv[2]]
     
-    # Ask the last block
+    # Ask the blockchain
     r = requests.get("http://"+nodes[0]+"/chain")
     chain = json.loads(r.text)
     
-    for block in chain["blocks"]:
-        tmpBlock  = Block()
-        tmpBlock.previousHash = block["previousHash"]
-        tmpBlock.nonce = block["nonce"]
-        
-        for log in block["logList"]:
-            tmpBlock.addLog(Log(log["nodeUUID"],log["power"],log["logID"]))
-        
-        blockchain.append(tmpBlock)
+    # For all blocks, add them to our blockchain
+
+    
+    # Add ourself as knowned node
+    body = {"nodeIP":"localhost:"+str(sys.argv[1])}
+    requests.post("http://"+nodes[0]+"/add_node",json=body)
     
 
 else:
