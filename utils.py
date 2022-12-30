@@ -1,13 +1,11 @@
 # Simulate the data flow 
+from datetime import datetime
 import random
 import time
-
-# Simulate a dataflow
-def simulateDataFlow():
-    time.sleep(5)
         
 # Create an unique ID for the node
 def GenerateUUID():
+    random.seed(datetime.now())
     UUID = 0
     
     for i in range(10):

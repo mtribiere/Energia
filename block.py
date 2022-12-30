@@ -50,4 +50,7 @@ class Block:
     
     # Mine the current block
     def mine(self):
-        print(self.getBlockHash())
+        while (self.getBlockHash()[:4] != "0000"):
+            self.nonce += 1
+        
+        print("Block mined :  "+self.getBlockHash())

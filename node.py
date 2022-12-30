@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import json
 import random
@@ -74,6 +75,10 @@ def addLog():
         body = {"log":values["log"]}
         requests.post("http://"+node+"/add_log",json=body)
     
+    # If the queue is full
+    if len(pendingLogs) > 5:
+        mineBlock()
+    
     return "OK"
 
 @app.route('/sync_chain', methods=['POST'])
@@ -95,13 +100,19 @@ def syncChain():
     blockchain = proposedChain
     pendingLogs = []
     
-    print("Chain synced")
+    print(" [Chain synced by remote] ")
     
     return "OK"
 
 @app.route("/mine")
-def mineBlock():
+def mine():
     
+    mineBlock()
+
+    return "OK"
+
+
+def mineBlock():
     global blockchain, pendingLogs
     
     # Create a new block
@@ -123,15 +134,26 @@ def mineBlock():
     
     for node in nodes:
         requests.post("http://"+node+"/sync_chain",json=body)
-
-    return "OK"
-
     
+
+
+# Simulate a dataflow
+def simulateDataFlow():
+    while True:
+        time.sleep(random.randint(0,10))
+        
+        # Broadcast the log to all known nodes
+        newLog = Log(UUID,random.randint(1,100),GenerateUUID())
+        for node in nodes:
+            body = {"log":newLog.toJSON()}
+            requests.post("http://"+node+"/add_log",json=body)
+        
+        del newLog
 
 #############################################################
 # Check usage
 if(len(sys.argv)<2):
-    print("Usage: "+sys.argv[0] + " [port] (node)")
+    print("Usage: "+sys.argv[0] + " [port]")
     exit(0)
 
 # Start the node
@@ -140,36 +162,13 @@ UUID = GenerateUUID()
 print("Node UUID: "+str(UUID))
 print("\n")
 
-# If an other node is supplied  
-if(len(sys.argv) >= 3):
-    print("Connecting to network...")
     
-    # Add the node to knowned node
-    nodes += [sys.argv[2]]
-    
-    # Ask the blockchain
-    r = requests.get("http://"+nodes[0]+"/chain")
-    chain = json.loads(r.text)
-    
-    # For all blocks, add them to our blockchain
-
-    
-    # Add ourself as knowned node
-    body = {"nodeIP":"localhost:"+str(sys.argv[1])}
-    requests.post("http://"+nodes[0]+"/add_node",json=body)
-    
-
-else:
-    
-    # Create the genesis block
-    blockchain += [Block()]
-    blockchain[0].previousHash = 987654321
-    blockchain[0].addLog(Log(123456789,10))
+# Create the genesis block
+blockchain += [Block()]
+blockchain[0].previousHash = 987654321
+blockchain[0].addLog(Log(123456789,10))
     
 
 # Start the fake dataflow
 threading.Thread(target=simulateDataFlow, daemon=True).start()
 app.run(host='localhost', port=sys.argv[1])
-
-
-##print(block.getBlockHash().hexdigest())
