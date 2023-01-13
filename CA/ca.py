@@ -51,4 +51,4 @@ if(len(sys.argv)<2):
 
 # Start the node
 print("=== Starting Energia \"\"\"Central\"\"\" Authority Node ===\n")
-app.run(host='localhost', port=sys.argv[1])
+app.run(host='localhost', port=sys.argv[1], ssl_context=('PKI/ca.crt','PKI/ca.key'))

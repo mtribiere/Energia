@@ -5,6 +5,15 @@ import random
 import sys
 import threading
 import time
+import base64
+import cryptography
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes
+from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric import ec
+
+import copy
+
 
 from flask import Flask, request
 import requests
@@ -21,7 +30,18 @@ nodes = []
 
 # List of pending logs
 pendingLogs = []
-        
+
+# Certs
+
+with open(sys.argv[3], "rb") as key_file:
+    privateKey = serialization.load_pem_private_key(
+        key_file.read(),
+        password=None,
+
+    )
+
+# NodeID
+nodeID = sys.argv[4] 
 
 # Create the API for the node
 app = Flask(__name__)
@@ -65,21 +85,39 @@ def addLog():
     if isLogPending(toAdd,pendingLogs) or toAdd.nodeUUID == UUID:
         return "Not added"
     
-    # Add the log to the list
-    pendingLogs.append(toAdd)
+    # Verify signature 
+    originNodeId = values["nodeID"]
+    signature = values["signature"]
+
+    # Get Public Key of Origin Node
+    req = requests.get("https://get_key/"+originNodeId,verify=False)
+
+    publicKey = x509.load_pem_x509_certificate(req.content).public_key() 
+
+    try:
+        publicKey.verify(signature, toAdd, ec.ECDSA(hashes.SHA256()))
+    except cryptography.exceptions.InvalidSignature:
+        return "Validation Error", 400
+    else:
+
+        # Add the log to the list
+        pendingLogs.append(toAdd)
     
-    print("Added pending log from "+str(toAdd.nodeUUID))
+        print("Added pending log from "+str(toAdd.nodeUUID))
     
-    # Broadcast the log to all known nodes
-    for node in nodes:
-        body = {"log":values["log"]}
-        requests.post("http://"+node+"/add_log",json=body)
+        # Broadcast the log to all known nodes
+        for node in nodes:
+        
+            body = {"log":values["log"],"nodeID":values["nodeID"],"signature":values["signature"]}
+            requests.post("http://"+node+"/add_log",json=body)
     
-    # If the queue is full
-    if len(pendingLogs) > 5:
-        mineBlock()
+        # If the queue is full
+        if len(pendingLogs) > 5:
+            mineBlock()
     
-    return "OK"
+        return "OK"
+
+    return "Validation Error", 400
 
 @app.route('/sync_chain', methods=['POST'])
 def syncChain():
@@ -145,7 +183,8 @@ def simulateDataFlow():
         # Broadcast the log to all known nodes
         newLog = Log(UUID,random.randint(1,100),GenerateUUID())
         for node in nodes:
-            body = {"log":newLog.toJSON()}
+            signature = privateKey.sign(json.dumps(newLog.toJSON()).encode('utf-8'),ec.ECDSA(hashes.SHA256()))
+            body = {"log":newLog.toJSON(),"nodeID":nodeID,"signature":signature}
             requests.post("http://"+node+"/add_log",json=body)
         
         del newLog
