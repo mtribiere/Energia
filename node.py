@@ -22,6 +22,9 @@ from log import Log
 from block import Block
 from utils import *
 
+import urllib3
+urllib3.disable_warnings()
+
 # List of the blocks 
 blockchain = []
 
@@ -39,9 +42,6 @@ with open(sys.argv[3], "rb") as key_file:
         password=None,
 
     )
-
-# NodeID
-nodeID = sys.argv[4] 
 
 # Create the API for the node
 app = Flask(__name__)
@@ -87,19 +87,23 @@ def addLog():
     
     # Verify signature 
     originNodeId = values["nodeID"]
-    signature = values["signature"]
-
+    signature = base64.b64decode(values["signature"].encode('ascii'))
+    #print(signature)
     # Get Public Key of Origin Node
-    req = requests.get("https://get_key/"+originNodeId,verify=False)
+    req = requests.get("https://127.0.0.1:3000/get_key?nodeID="+originNodeId,verify=False)
 
     publicKey = x509.load_pem_x509_certificate(req.content).public_key() 
 
+    #print(toAdd)
+
     try:
-        publicKey.verify(signature, toAdd, ec.ECDSA(hashes.SHA256()))
+        data = json.dumps(toAdd.toJSON()).encode('utf-8')
+        #print(data)
+        publicKey.verify(signature, data, ec.ECDSA(hashes.SHA256()))
     except cryptography.exceptions.InvalidSignature:
         return "Validation Error", 400
     else:
-
+        #print("Valid signature")
         # Add the log to the list
         pendingLogs.append(toAdd)
     
@@ -124,23 +128,40 @@ def syncChain():
     global blockchain, pendingLogs
     
     values = request.get_json()
+
+    # Verify signature 
+    originNodeId = values["nodeID"]
+    signature = base64.b64decode(values["signature"].encode('ascii'))
+    #print(signature)
+    # Get Public Key of Origin Node
+    req = requests.get("https://127.0.0.1:3000/get_key?nodeID="+originNodeId,verify=False)
+
+    publicKey = x509.load_pem_x509_certificate(req.content).public_key() 
     
-    # Get the proposed chain
-    proposedChain = []
-    for block in values["blocks"]:
-        proposedChain.append(Block.fromJSON(block))
+    try:
+        publicKey.verify(signature, originNodeId.encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+    except cryptography.exceptions.InvalidSignature:
+        return "Validation Error", 400
+    else:
+
+        # Get the proposed chain
+        proposedChain = []
+        for block in values["blocks"]:
+            proposedChain.append(Block.fromJSON(block))
     
-    # If we should not accept the chain
-    if not(shouldSyncBlockChain(proposedChain,blockchain)):
-        return "Not accepted chain"
+        # If we should not accept the chain
+        if not(shouldSyncBlockChain(proposedChain,blockchain)):
+            return "Not accepted chain"
     
-    # Accept the chain
-    blockchain = proposedChain
-    pendingLogs = []
+        # Accept the chain
+        blockchain = proposedChain
+        pendingLogs = []
     
-    print(" [Chain synced by remote] ")
+        print(" [Chain synced by remote] ")
     
-    return "OK"
+        return "OK"
+
+    return "Validation Error", 400
 
 @app.route("/mine")
 def mine():
@@ -165,8 +186,10 @@ def mineBlock():
     blockchain.append(newBlock)
     pendingLogs = []
 
+    signature = privateKey.sign(UUID.encode('utf-8'),ec.ECDSA(hashes.SHA256()))
+
     # Broadcast the new chain
-    body = {"blocks":[]}
+    body = {"blocks":[],"nodeID":UUID,"signature":base64.b64encode(signature).decode('ascii')}
     for block in blockchain:
         body["blocks"].append(block.toJSON())
     
@@ -182,9 +205,18 @@ def simulateDataFlow():
         
         # Broadcast the log to all known nodes
         newLog = Log(UUID,random.randint(1,100),GenerateUUID())
+        newLogCopy = copy.deepcopy(newLog)
+        json.dumps(newLog.toJSON()).encode('utf-8')
         for node in nodes:
-            signature = privateKey.sign(json.dumps(newLog.toJSON()).encode('utf-8'),ec.ECDSA(hashes.SHA256()))
-            body = {"log":newLog.toJSON(),"nodeID":nodeID,"signature":signature}
+            data = json.dumps(newLog.toJSON()).encode('utf-8')
+            #print(data)
+            signature = privateKey.sign(data,ec.ECDSA(hashes.SHA256()))
+            print(signature)
+            print(base64.b64encode(signature))
+            print(signature)
+            type(signature)
+            body = {"log":newLogCopy.toJSON(),"nodeID":UUID,"signature":base64.b64encode(signature).decode('ascii')}
+            #print(body)
             requests.post("http://"+node+"/add_log",json=body)
         
         del newLog
@@ -197,7 +229,8 @@ if(len(sys.argv)<2):
 
 # Start the node
 print("=== Starting Energia Node ===\n")
-UUID = GenerateUUID()
+#UUID = GenerateUUID()
+UUID = sys.argv[4] 
 print("Node UUID: "+str(UUID))
 print("\n")
 

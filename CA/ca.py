@@ -1,6 +1,7 @@
 import sqlite3
 import sys
-from flask import Flask
+from flask import Flask, request
+from flask import make_response
 
 # Create the API for the node
 app = Flask(__name__)
@@ -16,15 +17,14 @@ def addKey():
 
     values = request.get_json()
 
-    conn.execute("""
-        INSERT INTO keys VALUES 
-        (values["nodeIP"],values["pubKey"])
-    """)
+    nodeID = values["nodeID"]
+    pubKey = values["pubKey"]
 
-    # Add the node to the list
-    pubKey.append(values["pubKey"]) 
+    conn.execute("INSERT INTO keys ('nodeID', 'pubKey') VALUES(?,?)", (nodeID, pubKey))
     
-    print("Added node " + values[nodeID] + " : " +values["pubKey"])
+    print("Added node " + nodeID + " : " + pubKey)
+
+    conn.close()
     
     return "OK"
 
@@ -34,13 +34,17 @@ def addKey():
 def getKey():
     conn = get_db_connection()
 
-    nodeID = request.args
+    nodeID = request.args.get("nodeID",type=str)
 
-    key = conn.execute('SELECT pubKey FROM keys WHERE nodeID=' + nodeID).fetchone()
+    print(nodeID)
 
-    print("Node " + nodeID + " pubKey : "+values["pubKey"])
-    
-    return "OK"
+    key = conn.execute("SELECT pubKey FROM keys WHERE nodeID=?",(nodeID,)).fetchone()[0]
+
+    print("Node " + nodeID + " pubKey : " + key)
+
+    conn.close()
+
+    return app.make_response(key)
 
 
 #############################################################
